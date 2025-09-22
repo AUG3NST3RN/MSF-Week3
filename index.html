@@ -65,7 +65,7 @@
     .flipper .face.back{transform:rotateY(0deg)}
     .flipper .face.front{transform:rotateY(180deg)}
 
-    .board{display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;max-width:640px;margin:8px auto 0}
+    .board{display:grid;grid-template-columns:repeat(4, 1fr);gap:22px;max-width:680px;margin:12px auto 0}
     .board .slot{display:grid;place-items:center}
     .disabled{pointer-events:none;filter:grayscale(.3);opacity:.8}
 
@@ -75,6 +75,17 @@
     .drawn-current{display:flex;flex-direction:column;align-items:center}
     .drawn-current .label{font-size:12px;color:var(--muted);margin-bottom:6px}
     #latestDraw{width:calc(var(--card-w) * var(--xl-scale));height:calc(var(--card-h) * var(--xl-scale));display:grid;place-items:center}
+
+    /* Draw duplicate history */
+    .history{margin-top:12px;background:var(--panel);border:1px solid #22213b;border-radius:12px;padding:10px;max-height:180px;overflow:auto}
+    .history .heading{font-weight:700;font-size:13px;margin-bottom:6px;color:#e6e6f0}
+    .history-list{display:flex;flex-wrap:wrap;gap:6px}
+    .pill{background:#232241;border:1px solid #343262;color:#e6e6f0;border-radius:999px;padding:4px 8px;font-size:11px}
+
+    /* Match mode centering */
+    .left.match-mode{display:flex;flex-direction:column}
+    .left.match-mode .deck-area{display:none}
+    .left.match-mode #board{margin:auto}
 
     .sidebar-row{display:flex;justify-content:space-between;align-items:center}
     .timer{font-weight:800;font-size:28px;color:var(--accent)}
@@ -148,6 +159,10 @@
       <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5">
         <div><b>Match:</b> Flip 16 cards and find 8 pairs in 60 seconds.</div>
         <div><b>Draw:</b> Click the deck to draw. First time you pull a duplicate, a popup reveals that card's meaning.</div>
+      </div>
+      <div id="drawHistory" class="history" style="display:none">
+        <div class="heading">Cards drew</div>
+        <div id="historyList" class="history-list"></div>
       </div>
     </aside>
   </div>
@@ -236,6 +251,8 @@
     const modalCard = document.getElementById('modalCard');
     const modalText = document.getElementById('modalText');
     const closeModal = document.getElementById('closeModal');
+    const drawHistory = document.getElementById('drawHistory');
+    const historyList = document.getElementById('historyList');
 
     // ------------------------------
     // State
@@ -254,6 +271,27 @@
     // Draw game state
     let seenCounts = new Map();
     let duplicateShown = false;
+    let modalSource = null; // 'draw' | 'match' | null
+    let duplicatedSet = new Set(JSON.parse(localStorage.getItem('tarotDuplicateIds')||'[]'));
+
+    const renderDuplicateHistory = () => {
+      if(!historyList) return;
+      historyList.innerHTML = '';
+      // Map ids back to names
+      const idToCard = new Map(TAROT.map(c=>[c.id,c]));
+      [...duplicatedSet].forEach(id => {
+        const card = idToCard.get(id);
+        if(!card) return;
+        const pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.textContent = card.name;
+        historyList.appendChild(pill);
+      });
+      // Show history if we have any, or if in draw mode
+      if(drawHistory){
+        drawHistory.style.display = (duplicatedSet.size > 0 || mode==='draw') ? '' : 'none';
+      }
+    };
 
     // ------------------------------
     // Utilities
@@ -331,6 +369,8 @@
       drawnArea.style.visibility = 'visible';
       deckEl.classList.remove('disabled');
       latestDrawLabel.style.display = 'none';
+      document.querySelector('.left')?.classList.remove('match-mode');
+      renderDuplicateHistory();
     };
 
     // ------------------------------
@@ -342,6 +382,7 @@
       centerNote.style.display = 'none';
       btnDraw.style.display = 'none';
       btnAgain.style.display = '';
+      document.querySelector('.left')?.classList.add('match-mode');
       // pick 8 unique
       chosenEight = pickN(TAROT, 8);
       const doubled = shuffle([...chosenEight, ...chosenEight]);
@@ -407,6 +448,8 @@
         chosenEight.forEach(t=>{
           const c = createCardElement(t, 'large');
           c.classList.add('flipped');
+          c.style.cursor = 'pointer';
+          c.addEventListener('click', ()=> openDuplicateModal(t, 'match'));
           galleryEl.appendChild(c);
         });
       }
@@ -423,6 +466,7 @@
       btnAgain.style.display = '';
       // enable deck clicking
       deckEl.classList.remove('disabled');
+      renderDuplicateHistory();
     };
 
     const drawFromDeck = () => {
@@ -473,11 +517,18 @@
       seenCounts.set(card.id, prev+1);
       if(prev >= 1 && !duplicateShown){
         duplicateShown = true;
-        openDuplicateModal(card);
+        openDuplicateModal(card, 'draw');
+      }
+      // Record duplicate card the first time it reaches count 2
+      if(prev + 1 === 2 && !duplicatedSet.has(card.id)){
+        duplicatedSet.add(card.id);
+        localStorage.setItem('tarotDuplicateIds', JSON.stringify([...duplicatedSet]));
+        renderDuplicateHistory();
       }
     };
 
-    const openDuplicateModal = (card) => {
+    const openDuplicateModal = (card, source = 'draw') => {
+      modalSource = source;
       modalCard.innerHTML = '';
       const big = createCardElement(card, 'large');
       big.classList.add('flipped');
@@ -494,10 +545,21 @@
     btnDraw.addEventListener('click', startDraw);
     btnAgain.addEventListener('click', resetUI);
     deckEl.addEventListener('click', ()=>{ if(mode==='draw') drawFromDeck(); });
-    closeModal.addEventListener('click', ()=> { dupModal.close(); resetUI(); });
-    dupModal.addEventListener('click', (e)=>{ if(e.target === dupModal) { dupModal.close(); resetUI(); } });
+    closeModal.addEventListener('click', ()=> { 
+      dupModal.close(); 
+      if(modalSource === 'draw'){ resetUI(); }
+      modalSource = null;
+    });
+    dupModal.addEventListener('click', (e)=>{ 
+      if(e.target === dupModal) { 
+        dupModal.close(); 
+        if(modalSource === 'draw'){ resetUI(); }
+        modalSource = null;
+      } 
+    });
 
     // initial
+    renderDuplicateHistory();
     resetUI();
   </script>
 </body>
