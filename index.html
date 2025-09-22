@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Modern Tarot — Match & Draw</title>
+  <style>
+    :root{
+      --bg:#0f0e17;
+      --panel:#151426;
+      --gold:#f6c177;
+      --accent:#7ad0ff;
+      --muted:#a1a1b3;
+      --card:#1d1b31;
+      --card-edge:#2a2847;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(ellipse at center, #231c3d 0%, #0f0e17 70%);color:#fff;overflow:hidden}
+
+    body::before{
+      content:"";
+      position:fixed;inset:0;
+      background:url('https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Tarot_card_back_2008.jpg/240px-Tarot_card_back_2008.jpg') repeat;
+      opacity:0.05;
+      pointer-events:none;
+    }
+
+    .decor{position:fixed;pointer-events:none;z-index:0;font-size:48px;color:var(--gold);opacity:0.25;}
+
+    @keyframes float {
+      0%,100%{transform:translateY(0) rotate(0deg)}
+      50%{transform:translateY(-15px) rotate(8deg)}
+    }
+
+    .app{position:relative;z-index:1;display:grid;grid-template-columns:minmax(400px,1fr) 320px;gap:16px;height:100%;padding:20px}
+    .left{position:relative;border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));backdrop-filter:blur(2px);box-shadow:0 10px 30px rgba(0,0,0,.35);padding:16px;overflow:hidden}
+
+    .right{display:flex;flex-direction:column;gap:12px;background:var(--panel);border:1px solid #22213b;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .title{font-size:20px;font-weight:700;letter-spacing:0.3px}
+
+    .deck-area{display:flex;align-items:center;gap:16px;min-height:420px}
+
+    .deck{position:relative;width:160px;height:240px;cursor:pointer;filter: drop-shadow(0 6px 18px rgba(0,0,0,.4));}
+    .deck .card{position:absolute;inset:0;transform:translate(var(--dx,0), var(--dy,0)) rotate(var(--rot,0deg));}
+
+    .card{width:120px;height:180px;border-radius:14px;background:var(--card);border:1px solid var(--card-edge);display:grid;place-items:center;position:relative;perspective:1000px;}
+    .card.large{width:200px;height:300px}
+    .card.extra-large{width:260px;height:380px}
+    .card .face{position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;backface-visibility:hidden;transform-style:preserve-3d}
+    .back{background:radial-gradient(circle at center, #2e2552 0%, #1d1833 70%);border:2px solid var(--gold);position:relative;}
+    .back:before{content:"★";font-size:60px;color:var(--gold);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-shadow:0 0 8px #f6c177;}
+    .front{background:linear-gradient(180deg,#272447,#1d1b31);border:1px solid #3a3769}
+    .front .emoji{font-size:42px;margin-bottom:4px}
+    .front .name{font-weight:700;text-align:center}
+
+    .flipper{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .6s}
+    .flipped .flipper{transform:rotateY(180deg)}
+    .flipper .face.back{transform:rotateY(0deg)}
+    .flipper .face.front{transform:rotateY(180deg)}
+
+    .board{display:grid;grid-template-columns:repeat(4, 1fr);gap:12px;max-width:640px;margin:8px auto 0}
+    .board .slot{display:grid;place-items:center}
+    .disabled{pointer-events:none;filter:grayscale(.3);opacity:.8}
+
+    .gallery{display:grid;grid-template-columns:repeat(4, 1fr);gap:16px;max-width:880px;margin:12px auto}
+
+    .drawn-area{display:flex;align-items:center;gap:16px;min-height:420px;justify-content:center;width:100%}
+    .drawn-current{display:flex;flex-direction:column;align-items:center}
+    .drawn-current .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+    #latestDraw{width:260px;height:380px;display:grid;place-items:center}
+
+    .sidebar-row{display:flex;justify-content:space-between;align-items:center}
+    .timer{font-weight:800;font-size:28px;color:var(--accent)}
+
+    button{all:unset;cursor:pointer;background:#212042;border:1px solid #2c2a55;padding:10px 14px;border-radius:10px;transition:transform .06s ease, background .2s;display:inline-flex;gap:8px;align-items:center}
+    button:hover{background:#262456}
+    button:active{transform:scale(.98)}
+    .primary{background:linear-gradient(180deg,#2a2957,#212042);border-color:#3a3877}
+    .danger{background:#3a1e2b;border-color:#5c2a40}
+
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .spacer{height:8px}
+
+    dialog{border:none;border-radius:16px;padding:0;background:#131226;color:#fff;width:min(560px, 92vw)}
+    .modal{padding:16px 16px 20px}
+    .modal header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .modal .body{display:flex;gap:16px}
+    .modal .body .card.large{flex:0 0 auto}
+    .modal .meaning{line-height:1.5;color:#eaeaf3}
+    .close-x{cursor:pointer;opacity:.7}
+
+    .toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#1e1d39;border:1px solid #37356d;padding:10px 14px;border-radius:10px;opacity:0;animation:toast 2.2s ease}
+    @keyframes toast{0%{opacity:0;transform:translate(-50%,-8px)}15%{opacity:1;transform:translate(-50%,0)}85%{opacity:1}100%{opacity:0}}
+
+    .flying-card{position:fixed;z-index:1000;pointer-events:none;animation:flyCard 0.8s ease-out forwards}
+    @keyframes flyCard{
+      0%{transform:translate(0,0) scale(0.8) rotate(0deg);opacity:0.8}
+      50%{transform:translate(var(--target-x,0), var(--target-y,0)) scale(1.1) rotate(5deg);opacity:1}
+      100%{transform:translate(var(--target-x,0), var(--target-y,0)) scale(1) rotate(0deg);opacity:0}
+    }
+
+    .center-note{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+    .note-pill{background:#1e1d39;border:1px dashed #3b3a6d;color:#d4d4e2;padding:8px 12px;border-radius:999px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div id="decorContainer"></div>
+
+  <div class="app">
+    <section class="left" id="playArea">
+      <div class="deck-area">
+        <div class="deck" id="deck">
+          <div class="card" style="--dx:6px; --dy:6px; --rot:-2deg"></div>
+          <div class="card" style="--dx:3px; --dy:3px; --rot:1deg"></div>
+          <div class="card" style="--dx:0px; --dy:0px; --rot:0deg">
+            <div class="face back"></div>
+          </div>
+        </div>
+        <div class="drawn-area" id="drawnArea">
+          <div class="drawn-current">
+            <div class="label" id="latestDrawLabel" style="display:none">Latest Draw</div>
+            <div id="latestDraw"></div>
+          </div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div id="board" class="board"></div>
+      <div id="gallery" class="gallery" style="display:none"></div>
+      <div id="centerNote" class="center-note"><div class="note-pill">Press a game mode on the right to begin</div></div>
+      <div id="toast" class="toast" style="display:none">Time's up! Try again ✨</div>
+    </section>
+
+    <aside class="right">
+      <div class="title">Modern Tarot — Dual Mini Games</div>
+      <div class="sidebar-row"><div>Timer</div><div id="timer" class="timer">--:--</div></div>
+      <div class="row" id="buttons">
+        <button id="btnMatch" class="primary">▶ Match Game</button>
+        <button id="btnDraw" class="primary">🔮 Draw Game</button>
+        <button id="btnAgain" class="danger" style="display:none">↺ Play Again</button>
+      </div>
+      <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5">
+        <div><b>Match:</b> Flip 16 cards and find 8 pairs in 60 seconds.</div>
+        <div><b>Draw:</b> Click the deck to draw. First time you pull a duplicate, a popup reveals that card's meaning.</div>
+      </div>
+    </aside>
+  </div>
+
+  <dialog id="dupModal"><div class="modal"><header><div style="font-weight:700">A familiar fate appears…</div><div class="close-x" id="closeModal">✕</div></header><div class="body"><div id="modalCard"></div><div class="meaning" id="modalText"></div></div></div></dialog>
+
+  <script>
+    // Randomly spawn decorative elements
+    const container = document.getElementById('decorContainer');
+    const symbols = ["🌙","🍷","🍃","⭐"];
+    const count = 15;
+    for(let i=0;i<count;i++){
+      const div=document.createElement('div');
+      div.className='decor';
+      div.textContent=symbols[Math.floor(Math.random()*symbols.length)];
+      div.style.top=Math.random()*90+"%";
+      div.style.left=Math.random()*90+"%";
+      div.style.fontSize=(40+Math.random()*50)+"px";
+      container.appendChild(div);
+    }
+
+    // ------------------------------
+    // Tarot Data (22 Major Arcana)
+    // ------------------------------
+    const TAROT = [
+      { id:0,  name:"The Fool", emoji:"🤡", meaning:"The Fool represents new beginnings, spontaneity, and taking a leap of faith into the unknown. This card encourages you to embrace your inner child, trust your instincts, and approach life with optimism and wonder. It suggests that sometimes the best path forward is to let go of overthinking and simply take that first step, even if you don't know exactly where it will lead. The Fool reminds us that every expert was once a beginner, and every journey begins with a single step.", jokes:["Even a fool can be right twice a day."] },
+      { id:1,  name:"The Magician", emoji:"🪄", meaning:"The Magician embodies manifestation, resourcefulness, and the power to transform your desires into reality. This card represents having all the tools and abilities you need at your disposal to achieve your goals. It encourages you to take action, use your skills creatively, and believe in your own power to create change. The Magician reminds us that we are the architects of our own destiny, capable of turning dreams into tangible results through focused intention and practical action.", jokes:["Pulling results out of thin air since forever."] },
+      { id:2,  name:"The High Priestess", emoji:"👑", meaning:"The High Priestess represents intuition, mystery, and the deep wisdom of the subconscious mind. She sits between the conscious and unconscious worlds, holding the key to hidden knowledge and spiritual insight. This card encourages you to trust your inner voice, pay attention to your dreams and intuition, and seek answers within rather than always looking outward. The High Priestess reminds us that some truths can only be discovered through quiet reflection and inner knowing.", jokes:["Shh. If you know, you know."] },
+      { id:3,  name:"The Empress", emoji:"🌿", meaning:"The Empress embodies abundance, nurturing, and the creative power of nature. She represents fertility, both literal and metaphorical, encouraging growth in all areas of life. This card suggests a time of prosperity, creativity, and caring for others or yourself. The Empress reminds us to connect with nature, embrace our sensuality, and cultivate the things that bring us joy and fulfillment. She represents the divine feminine energy of creation and nurturing.", jokes:["Touch grass. She approves."] },
+      { id:4,  name:"The Emperor", emoji:"🦅", meaning:"The Emperor represents authority, structure, and the establishment of order and stability. He embodies leadership, discipline, and the ability to create lasting foundations for success. This card encourages you to take charge of your life, set clear boundaries, and approach challenges with strategic thinking and determination. The Emperor reminds us that true power comes from responsibility, integrity, and the ability to protect and provide for those under our care.", jokes:["Built different. Probably has a calendar for fun."] },
+      { id:5,  name:"The Hierophant", emoji:"📜", meaning:"The Hierophant represents tradition, learning, and spiritual guidance. He embodies the wisdom of established institutions, religious or educational systems, and the importance of following time-tested principles. This card encourages you to seek knowledge from teachers, mentors, or traditional sources of wisdom. The Hierophant reminds us that while innovation is valuable, there is also great wisdom in learning from those who have come before us and following proven paths to growth and understanding.", jokes:["Reads the terms and conditions. Twice."] },
+      { id:6,  name:"The Lovers", emoji:"💞", meaning:"The Lovers represent harmony, relationships, and the power of choice in matters of the heart. This card embodies the union of opposites, whether in romantic relationships, partnerships, or the integration of different aspects of yourself. It encourages you to make decisions based on love, values, and what truly matters to you. The Lovers remind us that the most important choices in life often involve balancing different desires and finding harmony between competing priorities.", jokes:["It's complicated (but beautifully so)."] },
+      { id:7,  name:"The Chariot", emoji:"💨", meaning:"The Chariot represents willpower, control, and the determination to overcome obstacles and achieve victory. This card embodies the energy of focused action, self-discipline, and the ability to harness opposing forces to move forward toward your goals. It encourages you to take control of your life's direction, maintain your focus despite distractions, and use your inner strength to overcome any challenges that stand in your way. The Chariot reminds us that success comes to those who are willing to take the reins of their own destiny.", jokes:["Speeding ticket for your goals."] },
+      { id:8,  name:"Strength", emoji:"🦁", meaning:"Strength represents courage, patience, and the power of inner fortitude over brute force. This card embodies the ability to remain calm and composed in the face of challenges, using gentleness and understanding rather than aggression to overcome obstacles. It encourages you to trust in your own inner strength, practice patience with yourself and others, and approach difficult situations with compassion and wisdom. Strength reminds us that true power comes from self-control, confidence, and the ability to tame our own inner beasts.", jokes:["Tames lions. Wrestles Mondays."] },
+      { id:9,  name:"The Hermit", emoji:"🏔️", meaning:"The Hermit represents soul-searching, solitude, and the quest for inner wisdom and spiritual enlightenment. This card embodies the importance of taking time away from the noise of the world to reflect, meditate, and seek answers within. It encourages you to embrace periods of solitude, trust your inner guidance, and share the wisdom you've gained with others when the time is right. The Hermit reminds us that sometimes we must withdraw from the world to find our true path and purpose.", jokes:["BRB, on DND since 1379."] },
+      { id:10, name:"Wheel of Fortune", emoji:"🎡", meaning:"The Wheel of Fortune represents cycles, fate, and the ever-changing nature of life. This card embodies the understanding that life moves in cycles of ups and downs, and that change is the only constant. It encourages you to embrace the natural flow of life, recognize that both good and challenging times are temporary, and trust in the greater plan of the universe. The Wheel of Fortune reminds us that our current circumstances will change, and that we should remain adaptable and optimistic about what the future may bring.", jokes:["Plot twist: it's not about pizza."] },
+      { id:11, name:"Justice", emoji:"⚖️", meaning:"Justice represents fairness, truth, and the balance of cause and effect in our lives. This card embodies the principle that our actions have consequences, and that truth and fairness will ultimately prevail. It encourages you to make decisions based on what is right and fair, take responsibility for your actions, and seek balance in all areas of your life. Justice reminds us that we reap what we sow, and that living with integrity and honesty will lead to positive outcomes in the long run.", jokes:["Your receipts have receipts."] },
+      { id:12, name:"The Hanged Man", emoji:"🪢", meaning:"The Hanged Man represents perspective, surrender, and the wisdom that comes from seeing things from a different angle. This card embodies the concept of voluntary sacrifice, letting go of control, and gaining new insights through patience and acceptance. It encourages you to pause, reflect, and consider alternative viewpoints before making important decisions. The Hanged Man reminds us that sometimes the best action is inaction, and that by surrendering to the present moment, we can gain profound wisdom and clarity.", jokes:["Doing nothing, but like, intentionally."] },
+      { id:13, name:"Death", emoji:"🖤", meaning:"Death represents endings, transformation, and the natural cycle of death and rebirth. This card embodies the concept that sometimes we must let go of what no longer serves us to make room for new growth and opportunities. It encourages you to embrace change, release old patterns or relationships that are holding you back, and trust in the process of transformation. Death reminds us that endings are not final, but rather necessary steps in the journey of growth and renewal.", jokes:["Not doom. Just a refresh button."] },
+      { id:14, name:"Temperance", emoji:"🏺", meaning:"Temperance represents balance, moderation, and the art of finding harmony between opposing forces. This card embodies the wisdom of patience, self-control, and the gradual process of achieving your goals through steady, measured action. It encourages you to avoid extremes, practice moderation in all things, and trust in the process of gradual improvement. Temperance reminds us that lasting success comes not from dramatic gestures, but from consistent, balanced effort over time.", jokes:["One vibe at a time."] },
+      { id:15, name:"The Devil", emoji:"😈", meaning:"The Devil represents attachment, temptation, and the shadow aspects of human nature that can hold us back from our true potential. This card embodies the ways in which we can become trapped by our own fears, addictions, or limiting beliefs. It encourages you to examine what is truly binding you, recognize your own power to break free from negative patterns, and take responsibility for your choices. The Devil reminds us that the chains that bind us are often of our own making, and that we have the power to release ourselves from them.", jokes:["Unsub from that 3 AM scrolling."] },
+      { id:16, name:"The Tower", emoji:"🌩️", meaning:"The Tower represents upheaval, sudden change, and the destruction of false foundations to make way for truth and authenticity. This card embodies the concept that sometimes dramatic change is necessary to break free from limiting structures or beliefs. It encourages you to embrace the chaos of transformation, trust that destruction often precedes creation, and be open to rebuilding your life on more solid foundations. The Tower reminds us that while change can be frightening, it often leads to greater freedom and authenticity.", jokes:["Oops. But now you can redecorate."] },
+      { id:17, name:"The Star", emoji:"⭐", meaning:"The Star represents hope, renewal, and the guiding light that appears after the darkness of difficult times. This card embodies the power of faith, inspiration, and the belief that better times are ahead. It encourages you to maintain hope even in challenging circumstances, trust in the universe's plan for you, and share your light with others who may be struggling. The Star reminds us that even in our darkest moments, there is always a light to guide us forward and renew our spirit.", jokes:["Hydrate. Glow. Repeat."] },
+      { id:18, name:"The Moon", emoji:"🌙", meaning:"The Moon represents illusion, intuition, and the mysterious realm of the subconscious mind. This card embodies the power of dreams, psychic abilities, and the importance of trusting your instincts even when things seem unclear. It encourages you to pay attention to your dreams and intuition, be aware that things may not be as they appear, and trust in the wisdom of your unconscious mind. The Moon reminds us that sometimes the most important truths are hidden beneath the surface, waiting to be discovered through inner reflection.", jokes:["Trust your gut, not your group chat."] },
+      { id:19, name:"The Sun", emoji:"🌞", meaning:"The Sun represents joy, success, and the radiant energy of vitality and optimism. This card embodies the power of positive energy, achievement, and the warmth of happiness and fulfillment. It encourages you to embrace life with enthusiasm, celebrate your successes, and share your joy with others. The Sun reminds us that we have the power to create our own happiness and that positive energy attracts positive outcomes. It represents a time of clarity, success, and the confidence that comes from knowing you are on the right path.", jokes:["Main character energy."] },
+      { id:20, name:"Judgement", emoji:"📣", meaning:"Judgement represents awakening, reflection, and the call to rise to a higher level of consciousness and purpose. This card embodies the concept of spiritual rebirth, the evaluation of past actions, and the opportunity to make amends and move forward with greater wisdom. It encourages you to reflect on your life's journey, forgive yourself and others for past mistakes, and embrace the opportunity for renewal and transformation. Judgement reminds us that we have the power to change our lives and that every moment offers the chance for a fresh start.", jokes:["Your past called. You didn't answer."] },
+      { id:21, name:"The World", emoji:"🌍", meaning:"The World represents completion, wholeness, and the successful achievement of a major life goal or cycle. This card embodies the concept of integration, accomplishment, and the sense of fulfillment that comes from completing a significant journey. It encourages you to celebrate your achievements, recognize how far you've come, and prepare for the next phase of your journey. The World reminds us that we are capable of great things and that every ending is also a new beginning, offering the opportunity to start fresh with the wisdom gained from our experiences.", jokes:["Achievement unlocked: Touch Grass (IRL)."] },
+    ];
+
+    // ------------------------------
+    // DOM References
+    // ------------------------------
+    const deckEl = document.getElementById('deck');
+    const boardEl = document.getElementById('board');
+    const galleryEl = document.getElementById('gallery');
+    const timerEl = document.getElementById('timer');
+    const btnMatch = document.getElementById('btnMatch');
+    const btnDraw = document.getElementById('btnDraw');
+    const btnAgain = document.getElementById('btnAgain');
+    const toastEl = document.getElementById('toast');
+    const centerNote = document.getElementById('centerNote');
+    const latestDraw = document.getElementById('latestDraw');
+    const latestDrawLabel = document.getElementById('latestDrawLabel');
+    const drawnArea = document.getElementById('drawnArea');
+    const dupModal = document.getElementById('dupModal');
+    const modalCard = document.getElementById('modalCard');
+    const modalText = document.getElementById('modalText');
+    const closeModal = document.getElementById('closeModal');
+
+    // ------------------------------
+    // State
+    // ------------------------------
+    let mode = 'idle'; // 'idle' | 'match' | 'draw'
+    let timerId = null;
+    let timeLeft = 0;
+    let canClick = true;
+
+    // Match game state
+    let matchCards = [];
+    let flippedIndices = [];
+    let matchedSet = new Set();
+    let chosenEight = [];
+
+    // Draw game state
+    let seenCounts = new Map();
+    let duplicateShown = false;
+
+    // ------------------------------
+    // Utilities
+    // ------------------------------
+    const randInt = (n) => Math.floor(Math.random()*n);
+    const shuffle = (arr) => {
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){ const j = randInt(i+1); [a[i],a[j]] = [a[j],a[i]]; }
+      return a;
+    };
+    const pickN = (arr, n) => shuffle(arr).slice(0, n);
+
+    const createCardElement = (tarot, sizeClass='') => {
+      const card = document.createElement('div');
+      card.className = `card ${sizeClass}`.trim();
+      const flipper = document.createElement('div');
+      flipper.className = 'flipper';
+      const back = document.createElement('div'); back.className='face back';
+      const front = document.createElement('div'); front.className='face front';
+      const emoji = document.createElement('div'); emoji.className='emoji'; emoji.textContent = tarot.emoji;
+      const name = document.createElement('div'); name.className='name'; name.textContent = tarot.name;
+      front.appendChild(emoji); front.appendChild(name);
+      flipper.appendChild(back); flipper.appendChild(front);
+      card.appendChild(flipper);
+      return card;
+    };
+
+    const setTimer = (seconds, onExpire) => {
+      clearInterval(timerId);
+      timeLeft = seconds;
+      renderTimer();
+      timerId = setInterval(()=>{
+        timeLeft -= 1;
+        if(timeLeft <= 0){
+          clearInterval(timerId);
+          timeLeft = 0; renderTimer();
+          onExpire?.();
+        } else {
+          renderTimer();
+        }
+      }, 1000);
+    };
+
+    const renderTimer = () => {
+      if(mode === 'match'){
+        const m = Math.floor(timeLeft/60).toString().padStart(2,'0');
+        const s = (timeLeft%60).toString().padStart(2,'0');
+        timerEl.textContent = `${m}:${s}`;
+      } else {
+        timerEl.textContent = '--:--';
+      }
+    };
+
+    const showToast = (text) => {
+      toastEl.textContent = text;
+      toastEl.style.display = 'block';
+      toastEl.style.opacity = '1';
+      setTimeout(()=>{ toastEl.style.display='none'; }, 2200);
+    };
+
+    const resetUI = () => {
+      mode = 'idle';
+      clearInterval(timerId);
+      timerEl.textContent = '--:--';
+      boardEl.innerHTML = '';
+      galleryEl.innerHTML = '';
+      galleryEl.style.display = 'none';
+      latestDraw.innerHTML = '';
+      seenCounts = new Map();
+      duplicateShown = false;
+      centerNote.style.display = 'grid';
+      btnMatch.style.display = '';
+      btnDraw.style.display = '';
+      btnAgain.style.display = 'none';
+      drawnArea.style.visibility = 'visible';
+      deckEl.classList.remove('disabled');
+      latestDrawLabel.style.display = 'none';
+    };
+
+    // ------------------------------
+    // Match Game
+    // ------------------------------
+    const startMatch = () => {
+      resetUI();
+      mode = 'match';
+      centerNote.style.display = 'none';
+      btnDraw.style.display = 'none';
+      btnAgain.style.display = '';
+      // pick 8 unique
+      chosenEight = pickN(TAROT, 8);
+      const doubled = shuffle([...chosenEight, ...chosenEight]);
+      matchCards = doubled;
+      matchedSet = new Set();
+      flippedIndices = [];
+      // render 4x4 board
+      boardEl.innerHTML = '';
+      doubled.forEach((cardData, idx)=>{
+        const slot = document.createElement('div');
+        slot.className = 'slot';
+        const el = createCardElement(cardData);
+        el.dataset.index = String(idx);
+        el.addEventListener('click', ()=> onMatchCardClick(idx, el));
+        slot.appendChild(el);
+        boardEl.appendChild(slot);
+      });
+      // start 60s timer
+      setTimer(60, ()=>{
+        canClick = false;
+        showToast("Time's up! Try again ✨");
+        boardEl.classList.add('disabled');
+      });
+      canClick = true;
+    };
+
+    const onMatchCardClick = (idx, el) => {
+      if(!canClick) return;
+      if(matchedSet.has(idx)) return;
+      if(flippedIndices.includes(idx)) return;
+      // flip
+      el.classList.add('flipped');
+      flippedIndices.push(idx);
+      if(flippedIndices.length === 2){
+        canClick = false;
+        const [a,b] = flippedIndices;
+        const same = matchCards[a].id === matchCards[b].id;
+        setTimeout(()=>{
+          if(same){
+            matchedSet.add(a); matchedSet.add(b);
+            // leave flipped
+          } else {
+            // unflip
+            const aEl = boardEl.querySelector(`.card[data-index="${a}"]`);
+            const bEl = boardEl.querySelector(`.card[data-index="${b}"]`);
+            aEl?.classList.remove('flipped');
+            bEl?.classList.remove('flipped');
+          }
+          flippedIndices = [];
+          canClick = true;
+          checkMatchWin();
+        }, 650);
+      }
+    };
+
+    const checkMatchWin = () => {
+      if(matchedSet.size === 16){
+        clearInterval(timerId);
+        // show gallery 2x4 larger faces
+        boardEl.innerHTML = '';
+        galleryEl.style.display = '';
+        galleryEl.innerHTML = '';
+        chosenEight.forEach(t=>{
+          const c = createCardElement(t, 'large');
+          c.classList.add('flipped');
+          galleryEl.appendChild(c);
+        });
+      }
+    };
+
+    // ------------------------------
+    // Draw Game
+    // ------------------------------
+    const startDraw = () => {
+      resetUI();
+      mode = 'draw';
+      centerNote.style.display = 'none';
+      btnMatch.style.display = 'none';
+      btnAgain.style.display = '';
+      // enable deck clicking
+      deckEl.classList.remove('disabled');
+    };
+
+    const drawFromDeck = () => {
+      if(mode !== 'draw') return;
+      const card = TAROT[randInt(TAROT.length)];
+      
+      // Create flying card animation
+      const flyingCard = createCardElement(card, 'large');
+      flyingCard.classList.add('flying-card');
+      
+      // Get deck and target positions
+      const deckRect = deckEl.getBoundingClientRect();
+      const targetRect = latestDraw.getBoundingClientRect();
+      
+      // Calculate animation path
+      const startX = deckRect.left + deckRect.width / 2;
+      const startY = deckRect.top + deckRect.height / 2;
+      const endX = targetRect.left + targetRect.width / 2;
+      const endY = targetRect.top + targetRect.height / 2;
+      
+      // Set initial position and animation target
+      flyingCard.style.left = startX + 'px';
+      flyingCard.style.top = startY + 'px';
+      flyingCard.style.setProperty('--target-x', (endX - startX) + 'px');
+      flyingCard.style.setProperty('--target-y', (endY - startY) + 'px');
+      
+      // Add to body for animation
+      document.body.appendChild(flyingCard);
+      
+      // Remove flying card after animation
+      setTimeout(() => {
+        if(flyingCard.parentNode) {
+          flyingCard.parentNode.removeChild(flyingCard);
+        }
+      }, 800);
+      
+      // Update the latest draw display after a short delay
+      setTimeout(() => {
+        latestDraw.innerHTML = '';
+        const el = createCardElement(card, 'extra-large');
+        el.classList.add('flipped');
+        latestDraw.appendChild(el);
+        latestDrawLabel.style.display = '';
+      }, 400);
+      
+      // track duplicates
+      const prev = seenCounts.get(card.id) || 0;
+      seenCounts.set(card.id, prev+1);
+      if(prev >= 1 && !duplicateShown){
+        duplicateShown = true;
+        openDuplicateModal(card);
+      }
+    };
+
+    const openDuplicateModal = (card) => {
+      modalCard.innerHTML = '';
+      const big = createCardElement(card, 'large');
+      big.classList.add('flipped');
+      modalCard.appendChild(big);
+      const humor = Math.random() < 0.25;
+      modalText.textContent = humor ? (card.jokes[0] || card.meaning) : card.meaning;
+      dupModal.showModal();
+    };
+
+    // ------------------------------
+    // Events
+    // ------------------------------
+    btnMatch.addEventListener('click', startMatch);
+    btnDraw.addEventListener('click', startDraw);
+    btnAgain.addEventListener('click', resetUI);
+    deckEl.addEventListener('click', ()=>{ if(mode==='draw') drawFromDeck(); });
+    closeModal.addEventListener('click', ()=> { dupModal.close(); resetUI(); });
+    dupModal.addEventListener('click', (e)=>{ if(e.target === dupModal) { dupModal.close(); resetUI(); } });
+
+    // initial
+    resetUI();
+  </script>
+</body>
+</html>
